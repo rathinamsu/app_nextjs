@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+
 
 const nifty50 = [
     "ADANIENT.NS", "ADANIPORTS.NS", "APOLLOHOSP.NS", "ASIANPAINT.NS",
@@ -41,7 +42,20 @@ export default function Home() {
     const [end, setEnd] = useState("");
     const [tableData, setTableData] = useState<StockData[]>([]);
     const [loading, setLoading] = useState(false);
-    const [summary, setSummary] = useState<{ totalHigh: number; successCount: number; failureCount: number } | null>(null);
+    const [summary, setSummary] = useState<{ totalHigh: number; successCount: number; failureCount: number; nextDayMomentumSum: number; } | null>(null);
+
+    useEffect(() => {
+        const today = new Date();
+
+        const endDate = today.toISOString().split("T")[0];
+
+        const startDateObj = new Date();
+        startDateObj.setDate(today.getDate() - 365);
+        const startDate = startDateObj.toISOString().split("T")[0];
+
+        setStart(startDate);
+        setEnd(endDate);
+    }, []);
 
     function average(arr: number[]) {
         if (arr.length === 0) return 0;
@@ -99,6 +113,9 @@ export default function Home() {
         let totalHigh = 0;
         let successCount = 0;
         let failureCount = 0;
+        let nextDayMomentumSum = 0;
+
+
 
         rawData.forEach((d, index) => {
             const open = d.open;
@@ -131,22 +148,48 @@ export default function Home() {
                 avgRange = average(rangeArr).toFixed(2);
                 trendSlope = slope(closeArr).toFixed(4);
 
+                // prediction =
+                //     parseFloat(bullishPct) > 0.55 && parseFloat(avgMomentum) > 0 && parseFloat(trendSlope) > 0
+                //         ? "HIGH PROBABILITY: CLOSE > OPEN"
+                //         : "LOW PROBABILITY";
                 prediction =
-                    parseFloat(bullishPct) > 0.55 && parseFloat(avgMomentum) > 0 && parseFloat(trendSlope) > 0
+                    parseFloat(bullishPct) > 0.55 &&
+                        parseFloat(avgRange) > 55 &&
+                        parseFloat(avgRange) < 300 &&
+                        parseFloat(avgMomentum) > -15 &&
+                        parseFloat(trendSlope) > -42 &&
+                        parseFloat(trendSlope) < 40
                         ? "HIGH PROBABILITY: CLOSE > OPEN"
                         : "LOW PROBABILITY";
+
             }
 
             // Check next day result
+            // if (prediction === "HIGH PROBABILITY: CLOSE > OPEN" && index + 1 < rawData.length) {
+            //     totalHigh++;
+            //     const nextDay = rawData[index + 1];
+            //     if (nextDay.close > nextDay.open) {
+            //         successCount++;
+            //     } else {
+            //         failureCount++;
+            //     }
+            // }
             if (prediction === "HIGH PROBABILITY: CLOSE > OPEN" && index + 1 < rawData.length) {
                 totalHigh++;
+
                 const nextDay = rawData[index + 1];
-                if (nextDay.close > nextDay.open) {
+                const nextDayMomentum = nextDay.close - nextDay.open;
+
+                // ✅ Add to sum
+                nextDayMomentumSum += nextDayMomentum;
+
+                if (nextDayMomentum > 0) {
                     successCount++;
                 } else {
                     failureCount++;
                 }
             }
+
 
             // Formatting dates
             const dateStr = typeof d.date === 'string' ? d.date.split("T")[0] : new Date(d.date).toISOString().split("T")[0];
@@ -171,7 +214,9 @@ export default function Home() {
         });
 
         setTableData(processed);
-        setSummary({ totalHigh, successCount, failureCount });
+        setSummary({
+            totalHigh, successCount, failureCount, nextDayMomentumSum
+        });
     }
 
     return (
@@ -243,12 +288,30 @@ export default function Home() {
             {summary && (
                 <div id="summary" style={{ marginTop: "15px", fontWeight: "bold" }}>
                     <div>📊 <u>Prediction Performance</u></div>
+
                     <div>Total HIGH PROBABILITY signals: <b>{summary.totalHigh}</b></div>
                     <div>✅ Successful next day: <b style={{ color: "green" }}>{summary.successCount}</b></div>
                     <div>❌ Failed next day: <b style={{ color: "red" }}>{summary.failureCount}</b></div>
-                    <div>🎯 Accuracy: <b>{summary.totalHigh > 0 ? ((summary.successCount / summary.totalHigh) * 100).toFixed(2) : 0}%</b></div>
+
+                    <div>
+                        🎯 Accuracy:{" "}
+                        <b>
+                            {summary.totalHigh > 0
+                                ? ((summary.successCount / summary.totalHigh) * 100).toFixed(2)
+                                : "0.00"}
+                            %
+                        </b>
+                    </div>
+
+                    <div>
+                        📈 Sum of next day daily Momentum:{" "}
+                        <b style={{ color: summary.nextDayMomentumSum >= 0 ? "green" : "red" }}>
+                            {(summary.nextDayMomentumSum ?? 0).toFixed(2)}
+                        </b>
+                    </div>
                 </div>
             )}
+
         </div>
     );
 }
